@@ -84,7 +84,7 @@ export const About: React.FC<AboutProps> = ({ onNavigate }) => {
             <span className="font-label-caps text-[10px] text-outline-variant uppercase">Design System</span>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="p-3 rounded-2xl bg-[#0D1711] border border-[#839958]/20 text-center">
               <span className="font-parisienne text-2xl text-[#F7F4D5] block mb-1">Parisianne</span>
               <span className="text-[10px] font-label-caps text-[#839958] uppercase">Heading Script</span>
@@ -94,27 +94,8 @@ export const About: React.FC<AboutProps> = ({ onNavigate }) => {
               <span className="text-[10px] font-label-caps text-[#839958] uppercase">Middle Display</span>
             </div>
             <div className="p-3 rounded-2xl bg-[#0D1711] border border-[#839958]/20 text-center">
-              <span className="font-thieving text-xl text-[#F7F4D5] block mb-1">Thieving</span>
-              <span className="text-[10px] font-label-caps text-[#839958] uppercase">Vintage Swash</span>
-            </div>
-            <div className="p-3 rounded-2xl bg-[#0D1711] border border-[#839958]/20 text-center">
-              <span className="font-briston text-xl text-white block mb-1">Briston</span>
-              <span className="text-[10px] font-label-caps text-[#839958] uppercase">Classic Serif</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-            <div className="p-2.5 rounded-xl bg-[#0D1711] border border-[#839958]/15 text-center">
-              <span className="font-adelaide text-lg text-[#F7F4D5] block">Adélaïde</span>
-              <span className="text-[9px] font-label-caps text-outline-variant uppercase">Stylistic Alternate</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-[#0D1711] border border-[#839958]/15 text-center">
-              <span className="font-royal text-lg text-white block">Royal Avenue</span>
-              <span className="text-[9px] font-label-caps text-outline-variant uppercase">Editorial Headline</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-[#0D1711] border border-[#839958]/15 text-center">
-              <span className="font-yrguma text-lg text-[#F7F4D5] italic block">Victoria Queen</span>
-              <span className="text-[9px] font-label-caps text-outline-variant uppercase">Swash Ligature</span>
+              <span className="font-yrguma text-lg text-[#F7F4D5] italic block mb-1">Victoria Queen</span>
+              <span className="text-[10px] font-label-caps text-[#839958] uppercase">Swash Ligature</span>
             </div>
           </div>
         </div>
