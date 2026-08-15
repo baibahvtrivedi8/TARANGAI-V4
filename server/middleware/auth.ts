@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/database.js';
@@ -14,7 +15,13 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.SESSION_SECRET || 'tarang_secret_hmac_signing_key_2026_environmental';
+export function getJwtSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('SESSION_SECRET environment variable is required');
+  }
+  return secret;
+}
 
 /**
  * Creates an HMAC signed stateless session token
@@ -28,8 +35,9 @@ export function createSessionToken(user: User): string {
     exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
   };
 
+  const secret = getJwtSecret();
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const signature = crypto.createHmac('sha256', JWT_SECRET).update(payloadB64).digest('base64url');
+  const signature = crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
   return `trg_ses_${payloadB64}.${signature}`;
 }
 
@@ -44,7 +52,8 @@ export function verifySessionToken(token: string): User | null {
   if (parts.length !== 2) return null;
 
   const [payloadB64, signature] = parts;
-  const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(payloadB64).digest('base64url');
+  const secret = getJwtSecret();
+  const expectedSig = crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
 
   if (signature !== expectedSig) return null;
 

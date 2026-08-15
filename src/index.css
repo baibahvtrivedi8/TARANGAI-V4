@@ -52,14 +52,6 @@
   --font-headline-lg-mobile: 'Sora', sans-serif;
   --font-data-display: 'Sora', sans-serif;
   --font-headline-lg: 'Sora', sans-serif;
-  --font-parisienne: 'Parisienne', cursive;
-  --font-heading-script: 'Parisienne', cursive;
-  --font-yrguma: 'Fraunces', 'Abril Fatface', 'Playfair Display', Georgia, serif;
-  --font-middle: 'Fraunces', 'Playfair Display', Georgia, serif;
-  --font-thieving: 'Fraunces', 'Cinzel Decorative', serif;
-  --font-briston: 'Playfair Display', serif;
-  --font-adelaide: 'Cormorant Garamond', 'Italiana', serif;
-  --font-royal: 'Cinzel Decorative', serif;
 }
 
 .font-parisienne, .font-heading-script {
