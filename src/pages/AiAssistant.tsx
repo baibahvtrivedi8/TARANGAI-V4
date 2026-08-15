@@ -44,7 +44,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialQuery = '', onN
   const [recentQueries, setRecentQueries] = useState<string[]>(DEFAULT_RECENT_QUERIES);
 
   // Workspace Mode
-  const [assistantMode, setAssistantMode] = useState<'chat' | 'compliance_report' | 'api_sandbox'>('chat');
+  const [assistantMode, setAssistantMode] = useState<'chat' | 'compliance_report'>('chat');
 
   // Report Generator State
   const [reportStationId, setReportStationId] = useState('cpcb-ganga-varanasi');
@@ -63,7 +63,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialQuery = '', onN
         id: 'msg-welcome',
         sender: 'assistant',
         summaryText:
-          'Hey there! 👋 Welcome to TARANG AI. I am your all-in-one AI Assistant & Environmental Hydrological Expert. Ask me anything—whether you need help writing Python code, solving homework, answering general questions, or performing deep telemetry analysis across global and Ganga River basin nodes (Haridwar, Prayagraj, Patna, Varanasi).',
+          'Welcome to **TARANG AI — HydroWatch Intelligence Engine**. I provide real-time water quality assessments, WQI calculations, hypoxia risk diagnostics, pollutant tracking, and compliance evaluations across global rivers and the Ganges River basin (Haridwar, Kanpur, Prayagraj, Varanasi, Patna).',
         matchedStations: [],
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
@@ -256,18 +256,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialQuery = '', onN
             <span className="material-symbols-outlined text-base">assignment</span>
             Compliance Report Generator
           </button>
-
-          <button
-            onClick={() => setAssistantMode('api_sandbox')}
-            className={`text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2 cursor-pointer font-bold ${
-              assistantMode === 'api_sandbox'
-                ? 'bg-[#839958] text-[#0A3323] shadow-md'
-                : 'text-white bg-[#121E17] hover:bg-[#162B20] border border-[#839958]/15'
-            }`}
-          >
-            <span className="material-symbols-outlined text-base">code</span>
-            API & Code Sandbox
-          </button>
         </div>
 
         <div>
@@ -327,6 +315,33 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialQuery = '', onN
 
       {/* Main Analysis Center */}
       <main className="flex-grow flex flex-col h-full overflow-hidden bg-[#070E09] relative">
+        {/* Mobile / Tablet Workspace Switcher */}
+        <div className="lg:hidden flex items-center gap-1.5 p-3 border-b border-[#1B2E23] bg-[#0B130E] overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setAssistantMode('chat')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+              assistantMode === 'chat'
+                ? 'bg-[#839958] text-[#0A3323]'
+                : 'bg-[#121E17] text-outline-variant hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">forum</span>
+            Chat & Analysis
+          </button>
+
+          <button
+            onClick={() => setAssistantMode('compliance_report')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+              assistantMode === 'compliance_report'
+                ? 'bg-[#839958] text-[#0A3323]'
+                : 'bg-[#121E17] text-outline-variant hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">assignment</span>
+            Compliance Report
+          </button>
+        </div>
+
         {/* VIEW 1: CHAT ASSISTANT & STREAM */}
         {assistantMode === 'chat' && (
           <>
@@ -717,7 +732,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialQuery = '', onN
                   onFocus={() => {
                     if (suggestions.length > 0) setShowSuggestions(true);
                   }}
-                  placeholder="Ask anything (e.g. Python code, homework, WQI analysis) or search Ganga basin (Varanasi, Haridwar)..."
+                  placeholder="Ask about water quality, WQI, hypoxia risks, or search river basins (e.g. Ganges, Haridwar, Varanasi, Amazon)..."
                   className="w-full bg-[#121E17] border border-[#839958]/25 focus:border-[#839958] rounded-2xl py-4 pl-5 pr-14 text-sm text-white placeholder:text-outline-variant/60 focus:outline-none focus:ring-1 focus:ring-[#839958] shadow-xl font-body-md"
                 />
                 <button
@@ -861,61 +876,6 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialQuery = '', onN
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* VIEW 3: API & CODE SANDBOX */}
-        {assistantMode === 'api_sandbox' && (
-          <div className="flex-grow overflow-y-auto p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full">
-            <div className="glass-panel organic-card rounded-3xl p-6 border border-[#839958]/25 bg-[#111C16] space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-2xl bg-[#1A2D23] flex items-center justify-center text-[#839958] border border-[#839958]/40">
-                  <span className="material-symbols-outlined text-2xl">code</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-white font-headline-lg uppercase">
-                    Developer API Integration Sandbox
-                  </h3>
-                  <p className="text-xs text-outline-variant">
-                    Ready-to-use Python and cURL code snippets for real-time telemetry queries and IoT ingestion
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-panel organic-card rounded-3xl p-6 border border-[#839958]/20 bg-[#111C16] space-y-3">
-              <span className="text-[10px] font-label-caps text-[#839958] uppercase font-bold">
-                1. REST API Telemetry Ingestion (Python)
-              </span>
-              <pre className="p-4 rounded-2xl bg-[#070E09] border border-[#839958]/20 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed">
-{`import requests
-
-API_KEY = "trg_live_demo_9823f47e2a9b1c55"
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-
-# Ingest new sensor reading
-payload = {
-    "readings": [
-        {"parameter": "dissolved_oxygen_mg_l", "value": 7.4, "unit": "mg/L"},
-        {"parameter": "ph", "value": 7.6, "unit": "pH"},
-        {"parameter": "turbidity_ntu", "value": 11.2, "unit": "NTU"}
-    ]
-}
-
-response = requests.post("https://tarang-ai.org/api/stations/cpcb-ganga-varanasi/telemetry", json=payload, headers=HEADERS)
-print("Ingest Status:", response.json())`}
-              </pre>
-            </div>
-
-            <div className="glass-panel organic-card rounded-3xl p-6 border border-[#839958]/20 bg-[#111C16] space-y-3">
-              <span className="text-[10px] font-label-caps text-[#839958] uppercase font-bold">
-                2. Real-Time WQI Calculation Endpoint (cURL)
-              </span>
-              <pre className="p-4 rounded-2xl bg-[#070E09] border border-[#839958]/20 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed">
-{`curl -X GET "https://tarang-ai.org/api/stations/cpcb-ganga-prayagraj" \\
-  -H "Authorization: Bearer trg_live_demo_9823f47e2a9b1c55"`}
-              </pre>
-            </div>
           </div>
         )}
       </main>

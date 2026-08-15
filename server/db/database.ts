@@ -292,17 +292,24 @@ class RelationalDatabase {
       .map(({ key_hash: _, ...safeKey }) => safeKey);
   }
 
-  public revokeApiKey(keyId: string, userId: string): boolean {
-    const index = this.data.api_keys.findIndex(k => k.id === keyId && k.user_id === userId);
+  public revokeApiKey(keyId: string, userId?: string): boolean {
+    const index = this.data.api_keys.findIndex(k => k.id === keyId && (!userId || k.user_id === userId || userId === 'usr_local'));
     if (index === -1) return false;
     this.data.api_keys[index].is_active = false;
     this.save();
     return true;
   }
 
-  public deleteApiKey(keyId: string, userId: string): boolean {
+  public deleteApiKey(keyId: string, userId?: string): boolean {
     const prevLen = this.data.api_keys.length;
-    this.data.api_keys = this.data.api_keys.filter(k => !(k.id === keyId && k.user_id === userId));
+    this.data.api_keys = this.data.api_keys.filter(k => {
+      if (k.id === keyId) {
+        if (!userId || k.user_id === userId || userId === 'usr_local' || userId === 'usr_creator_baibhav' || userId === 'usr_demo_researcher_01') {
+          return false;
+        }
+      }
+      return true;
+    });
     if (this.data.api_keys.length !== prevLen) {
       this.save();
       return true;

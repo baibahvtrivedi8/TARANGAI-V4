@@ -1,4 +1,4 @@
-import { Station, Forecast, SearchResponse, RiverSuggestion, User, ApiKey, AlertRule, AlertEvent, Bookmark, ComplianceReport, StationAggregateStats } from '../types';
+import { Station, Forecast, SearchResponse, RiverSuggestion, User, ApiKey, AlertRule, AlertEvent, Bookmark, ComplianceReport, StationAggregateStats, PublicApiItem, PublicApisCatalogResponse } from '../types';
 import { INITIAL_STATIONS, createDynamicRiverStation } from '../data/mockStations';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -355,3 +355,28 @@ export async function fetchSuggestions(query: string): Promise<RiverSuggestion[]
   } catch (_) {}
   return [];
 }
+
+// ==========================================
+// 8. PUBLIC APIS DIRECTORY (1,700+ APIS DATASET)
+// ==========================================
+
+export async function fetchPublicApis(query = '', category = '', limit = 50): Promise<PublicApisCatalogResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (category && category !== 'all' && category !== 'All') params.set('category', category);
+    params.set('limit', limit.toString());
+
+    const res = await fetch(getUrl(`/public-apis?${params.toString()}`));
+    if (!res.ok) throw new Error('Failed to fetch public APIs');
+    return await res.json();
+  } catch (err) {
+    return {
+      total: 0,
+      categories: [],
+      category_counts: {},
+      apis: [],
+    };
+  }
+}
+

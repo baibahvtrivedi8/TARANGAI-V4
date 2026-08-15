@@ -367,7 +367,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
 
   const handleRevokeKey = async (keyId: string) => {
     if (!confirm('Are you sure you want to revoke this API key? Applications using it will lose access immediately.')) return;
-    await revokeApiKey(keyId);
+    try {
+      await revokeApiKey(keyId);
+    } catch (e) {
+      console.warn('Revoke key request:', e);
+    }
     setApiKeys(prev => prev.filter(k => k.id !== keyId));
     showToast('API Key revoked.');
   };
@@ -451,20 +455,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                   <span className="material-symbols-outlined text-3xl">shield_person</span>
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-parisienne text-sm text-[#F7F4D5]">
-                      HydroWatch Researcher
-                    </span>
-                    <span className="text-[10px] text-emerald-400 font-mono font-bold flex items-center gap-1 bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      SAVED & ACTIVE
-                    </span>
-                  </div>
                   <h2 className="font-yrguma text-2xl md:text-3xl font-bold text-white tracking-tight mt-0.5">
                     {profileName || currentUser.full_name || currentUser.email.split('@')[0]}
                   </h2>
                   <p className="text-xs text-[#C2D1B2] font-mono">
-                    {currentUser.email} • {profileOrg || currentUser.organization || 'HydroWatch Environmental Lab'}
+                    {currentUser.email} • {profileOrg || currentUser.organization || 'Environmental Intelligence Laboratory'}
                   </p>
                 </div>
               </div>

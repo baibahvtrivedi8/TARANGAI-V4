@@ -223,3 +223,21 @@ export interface ComplianceReport {
   remediation_steps: string[];
   summary: string;
 }
+
+export interface PublicApiItem {
+  name: string;
+  link: string;
+  description: string;
+  auth: string;
+  https: boolean;
+  cors: string;
+  category: string;
+}
+
+export interface PublicApisCatalogResponse {
+  total: number;
+  categories: string[];
+  category_counts: Record<string, number>;
+  apis: PublicApiItem[];
+}
+

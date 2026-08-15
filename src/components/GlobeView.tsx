@@ -329,42 +329,42 @@ export const GlobeView = forwardRef<GlobeViewRef, GlobeViewProps>(({
   }, [stations, activeStationId]);
 
   return (
-    <div ref={containerRef} class="relative w-full h-full flex items-center justify-center overflow-hidden">
-      <canvas ref={canvasRef} class="w-full h-full cursor-grab active:cursor-grabbing min-h-[300px]" />
+    <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden">
+      <canvas ref={canvasRef} className="w-full h-full cursor-grab active:cursor-grabbing min-h-[300px]" />
 
       {/* Floating Station Hover Tooltip */}
       {hoveredStation && (
         <div
-          class="absolute z-50 glass-panel rounded-2xl p-4 border border-primary/20 shadow-2xl pointer-events-none max-w-xs transition-all transform -translate-x-1/2 -translate-y-full mb-3"
+          className="absolute z-50 glass-panel rounded-2xl p-4 border border-primary/20 shadow-2xl pointer-events-none max-w-xs transition-all transform -translate-x-1/2 -translate-y-full mb-3"
           style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
-          <div class="flex justify-between items-center mb-1">
-            <span class="font-label-caps text-[10px] text-primary uppercase font-bold tracking-widest">
+          <div className="flex justify-between items-center mb-1">
+            <span className="font-label-caps text-[10px] text-primary uppercase font-bold tracking-widest">
               {hoveredStation.source.toUpperCase()} NODE
             </span>
             <span
-              class="px-2 py-0.5 text-[10px] rounded-full font-bold uppercase tracking-wider text-black"
+              className="px-2 py-0.5 text-[10px] rounded-full font-bold uppercase tracking-wider text-black"
               style={{ backgroundColor: STATUS_COLORS[hoveredStation.status] }}
             >
               {hoveredStation.status}
             </span>
           </div>
-          <h4 class="font-headline-lg-mobile text-sm text-white font-bold leading-tight">
+          <h4 className="font-headline-lg-mobile text-sm text-white font-bold leading-tight">
             {hoveredStation.name}
           </h4>
-          <p class="font-body-sm text-xs text-outline-variant mb-2">
+          <p className="font-body-sm text-xs text-outline-variant mb-2">
             {hoveredStation.country} • {hoveredStation.water_body_type}
           </p>
-          <div class="grid grid-cols-2 gap-2 text-xs border-t border-primary/10 pt-2 font-label-caps">
+          <div className="grid grid-cols-2 gap-2 text-xs border-t border-primary/10 pt-2 font-label-caps">
             <div>
-              <span class="text-outline-variant block">DO:</span>
-              <span class="text-white font-bold">
+              <span className="text-outline-variant block">DO:</span>
+              <span className="text-white font-bold">
                 {hoveredStation.latest_readings.find(r => r.parameter === 'dissolved_oxygen_mg_l')?.value || '--'} mg/L
               </span>
             </div>
             <div>
-              <span class="text-outline-variant block">Temp:</span>
-              <span class="text-white font-bold">
+              <span className="text-outline-variant block">Temp:</span>
+              <span className="text-white font-bold">
                 {hoveredStation.latest_readings.find(r => r.parameter === 'temperature_c')?.value || '--'} °C
               </span>
             </div>

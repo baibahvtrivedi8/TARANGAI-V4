@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { db } from './server/db/database.js';
+import { publicApisRepo, PublicApiEntry } from './server/db/publicApis.js';
 import { authenticate, optionalAuth, createSessionToken } from './server/middleware/auth.js';
 import { evaluateRiverHealth, generateAdvancedForecast, generateComplianceReport, calculateWQISubIndices } from './server/engine/hydrology.js';
 import { KNOWN_GLOBAL_RIVERS, createDynamicRiverStation, createCoordinateStation } from './src/data/mockStations.js';
@@ -105,7 +106,7 @@ function isSpecificRiverNodeLookup(text: string): boolean {
 function isConversationalQuery(text: string): { isConversational: boolean; reply?: string } {
   const clean = text.toLowerCase().trim();
   if (!clean) {
-    return { isConversational: true, reply: "Hello! I am **TARANG AI**. You can ask me any environmental or general questions, request Python data scripts, or search for any river basin (e.g. *'Ganges River'*, *'Amazon'*, *'Rhine'*)." };
+    return { isConversational: true, reply: "Hello! I am **TARANG AI — HydroWatch Engine**. You can ask me water quality, WQI, hypoxia risk, or river hydrology questions, or search for any river basin (e.g. *'Ganges River'*, *'Amazon'*, *'Rhine'*)." };
   }
 
   const isSpecificNode = isSpecificRiverNodeLookup(clean);
@@ -116,7 +117,7 @@ function isConversationalQuery(text: string): { isConversational: boolean; reply
 
     let reply = "";
     if (greetingRegex.test(clean)) {
-      reply = "Hello! I am **TARANG AI**, your environmental intelligence & hydrological assistant. How can I assist your water quality monitoring, WQI calculations, river health queries, or sensor telemetry today?";
+      reply = "Hello! I am **TARANG AI**, your dedicated environmental intelligence & river hydrological assistant. How can I assist your water quality monitoring, WQI calculations, river health queries, or sensor telemetry today?";
     } else if (clean.includes('how many rivers') || clean.includes('rivers in world') || clean.includes('rivers are there in the world') || clean.includes('rivers are there in world')) {
       reply = `**Global River Count & Hydrological Overview:**
 
@@ -133,41 +134,21 @@ Key global river milestones:
 
 *You can analyze real-time WQI and telemetry for any of these rivers in TARANG AI by typing their name.*`;
     } else if (codeRegex.test(clean)) {
-      reply = `Here is a production-ready Python script to fetch live hydrological telemetry using your TARANG AI API key:
+      reply = `Here is a Python script to fetch live hydrological telemetry from the TARANG AI API:
 
 \`\`\`python
 import requests
-import json
 
-# TARANG AI HydroWatch Telemetry API endpoint
 API_URL = "https://tarang-ai.org/api/stations"
-API_KEY = "trg_live_YOUR_API_KEY"  # Generate in Account > API Keys
+API_KEY = "trg_live_YOUR_API_KEY"
 
 headers = {
     "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json"
 }
 
-def fetch_station_telemetry(station_id=None):
-    url = f"{API_URL}/{station_id}" if station_id else API_URL
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching water quality telemetry: {e}")
-        return None
-
-if __name__ == "__main__":
-    print("Connecting to TARANG AI Environmental Intelligence Network...")
-    stations = fetch_station_telemetry()
-    if stations:
-        print(f"Successfully retrieved telemetry for {len(stations)} monitoring nodes.\\n")
-        for st in stations[:3]:
-            print(f"Node: {st.get('name')} ({st.get('country')})")
-            print(f"  Status: {st.get('status').upper()}")
-            print(f"  pH Level: {st.get('ph_level')}")
-            print(f"  Pollution: {st.get('pollution_percentage')}%\\n")
+response = requests.get(f"{API_URL}/cpcb-ganga-varanasi", headers=headers)
+print("Station Telemetry:", response.json())
 \`\`\``;
     } else if (clean.includes('dissolved oxygen') || clean.includes('oxygen standard')) {
       reply = `**Dissolved Oxygen (DO) Standards for Aquatic Water Quality:**
@@ -183,13 +164,13 @@ if __name__ == "__main__":
     } else if (clean.includes('who are you') || clean.includes('your name') || clean.includes('what can you do')) {
       reply = "I am **TARANG AI — HydroWatch Engine**, an environmental intelligence platform for global water monitoring, predictive hypoxia forecasting, chemical pollutant tracing, and automated compliance reporting.";
     } else if (clean.includes('thank')) {
-      reply = "You're very welcome! Feel free to ask whenever you need detailed hydrological insights, code samples, or sensor telemetry.";
+      reply = "You're very welcome! Feel free to ask whenever you need detailed hydrological insights, water quality analysis, or sensor telemetry.";
     } else {
-      reply = `I am **TARANG AI**, an environmental intelligence assistant.
+      reply = `I am **TARANG AI**, an environmental intelligence assistant specialized in river hydrology and water quality monitoring.
 
-You can ask me questions about global rivers and hydrology, request Python API code, or search for specific monitoring stations like:
-- **Ganges River** (Haridwar, Prayagraj, Varanasi, Patna)
-- **Amazon River**, **Rhine River**, **Nile River**
+You can ask me questions about global rivers and water quality telemetry:
+- **Ganges River** (Haridwar, Prayagraj, Varanasi, Patna, Kanpur)
+- **Amazon River**, **Rhine River**, **Nile River**, **Thames River**
 - Or enter GPS coordinates (e.g., *25.3176, 82.9739*) to diagnose water quality metrics.`;
     }
     return { isConversational: true, reply };
@@ -590,14 +571,25 @@ async function startServer() {
     if (conversationalCheck.isConversational) {
       let reply = conversationalCheck.reply;
 
+      // Check if user is asking about public APIs, weather APIs, or integrations
+      const isAskingAboutApis = /\b(api|apis|dataset|endpoints|public api|public-apis|rest api|weather api|nasa|open-meteo|noaa|water api)\b/i.test(textQuery);
+      let matchedPublicApis: PublicApiEntry[] = [];
+      if (isAskingAboutApis || textQuery.length > 2) {
+        matchedPublicApis = publicApisRepo.search(textQuery, undefined, 5);
+      }
+
       try {
         const ai = getAi();
         if (ai) {
+          let apiContextPrompt = '';
+          if (matchedPublicApis.length > 0) {
+            apiContextPrompt = `\n\nRelevant APIs indexed in database:\n` + matchedPublicApis.map(a => `- ${a.name} (${a.category}): ${a.description} [Auth: ${a.auth}, Link: ${a.link}]`).join('\n');
+          }
+
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `You are TARANG AI, a warm, authoritative, 100% humanized AI Assistant and environmental hydrological expert.
-You excel at answering general questions, writing clean code (e.g., Python, JavaScript, cURL), assisting with homework, solving problems, and chatting naturally. Your specialized domain expertise is analyzing global river basins, pH telemetry, WQI scores, and Ganga River nodes (Varanasi, Haridwar, Prayagraj, Patna, Kanpur, Rishikesh).
-Respond directly, warmly, and thoroughly to the user prompt:
+            contents: `You are TARANG AI — HydroWatch Engine, an environmental hydrological AI expert specialized in water quality monitoring, WQI (Water Quality Index) calculations, hypoxia risk diagnostics, pollutant tracking, and compliance evaluations across global river basins and the Ganges River basin (Haridwar, Kanpur, Prayagraj, Varanasi, Patna).
+Respond directly, accurately, and scientifically to the user prompt:
 "${query}"`,
           });
           if (response.text) {
@@ -615,6 +607,7 @@ Respond directly, warmly, and thoroughly to the user prompt:
         parsed_filter: {},
         results: [],
         ai_summary: reply,
+        matched_public_apis: matchedPublicApis,
       });
       return;
     }
@@ -785,6 +778,38 @@ Respond directly, warmly, and thoroughly to the user prompt:
     }
 
     res.json(suggestions.slice(0, 7));
+  });
+
+  // ==========================================
+  // 8. PUBLIC APIS REPOSITORY (1,700+ APIS DATASET)
+  // ==========================================
+
+  // GET /api/public-apis
+  app.get('/api/public-apis', (req, res) => {
+    const q = (req.query.q as string) || '';
+    const category = (req.query.category as string) || '';
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+
+    const apis = publicApisRepo.search(q, category, limit);
+    const categories = publicApisRepo.getCategories();
+    const categoryCounts = publicApisRepo.getCategorySummary();
+
+    res.json({
+      total: publicApisRepo.count(),
+      returned: apis.length,
+      categories,
+      category_counts: categoryCounts,
+      apis,
+    });
+  });
+
+  // GET /api/public-apis/categories
+  app.get('/api/public-apis/categories', (req, res) => {
+    res.json({
+      categories: publicApisRepo.getCategories(),
+      category_counts: publicApisRepo.getCategorySummary(),
+      total_apis: publicApisRepo.count(),
+    });
   });
 
   // Direct alias routes for frontend backward compatibility
