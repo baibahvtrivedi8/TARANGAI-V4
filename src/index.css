@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dark-green: #0A3323;
+  --color-moss-green: #839958;
+  --color-beige: #F7F4D5;
+  --color-rosy-brown: #D3968C;
+  --color-midnight-green: #105666;
+
+  --color-on-error: #690005;
+  --color-outline-variant: #8DA094;
+  --color-on-secondary-fixed-variant: #354e1f;
+  --color-surface-bright: #1A2B21;
+  --color-primary: #F7F4D5;
+  --color-on-tertiary-container: #d9a886;
+  --color-on-primary-fixed: #0A3323;
+  --color-sand-light: #F7F4D5;
+  --color-secondary-fixed-dim: #839958;
+  --color-surface-container-low: #0D1711;
+  --color-on-background: #E5ECE7;
+  --color-on-primary-fixed-variant: #1B2E23;
+  --color-surface-container-lowest: #070E09;
+  --color-on-surface: #E5ECE7;
+  --color-tertiary-container: #5f3d22;
+  --color-on-primary: #0A3323;
+  --color-tertiary-fixed-dim: #efbc98;
+  --color-secondary-fixed: #839958;
+  --color-surface-container: #111C16;
+  --color-primary-fixed: #F7F4D5;
+  --color-surface-container-highest: #16241C;
+  --color-on-secondary: #0A3323;
+  --color-on-secondary-container: #839958;
+  --color-sage-muted: #C2D1B2;
+  --color-primary-container: #162B20;
+  --color-on-error-container: #ffdad6;
+  --color-surface-dim: #0B130E;
+  --color-error: #ffb4ab;
+  --color-forest-deep: #0B130E;
+  --color-background: #0B130E;
+  --color-outline: #5B6E62;
+  --color-tertiary: #D3968C;
+  --color-surface-tint: #839958;
+  --color-primary-fixed-dim: #839958;
+  --color-leaf-glow: #F7F4D5;
+  --color-surface: #0B130E;
+  --color-secondary: #839958;
+
+  --font-body-sm: 'Manrope', sans-serif;
+  --font-body-md: 'Manrope', sans-serif;
+  --font-label-caps: 'JetBrains Mono', monospace;
+  --font-headline-xl: 'Sora', sans-serif;
+  --font-headline-lg-mobile: 'Sora', sans-serif;
+  --font-data-display: 'Sora', sans-serif;
+  --font-headline-lg: 'Sora', sans-serif;
+  --font-parisienne: 'Parisienne', cursive;
+  --font-heading-script: 'Parisienne', cursive;
+  --font-yrguma: 'Fraunces', 'Abril Fatface', 'Playfair Display', Georgia, serif;
+  --font-middle: 'Fraunces', 'Playfair Display', Georgia, serif;
+  --font-thieving: 'Fraunces', 'Cinzel Decorative', serif;
+  --font-briston: 'Playfair Display', serif;
+  --font-adelaide: 'Cormorant Garamond', 'Italiana', serif;
+  --font-royal: 'Cinzel Decorative', serif;
+}
+
+.font-parisienne, .font-heading-script {
+  font-family: 'Parisienne', cursive !important;
+}
+
+.font-yrguma, .font-middle {
+  font-family: 'Fraunces', 'Abril Fatface', 'Playfair Display', Georgia, serif !important;
+  font-feature-settings: 'swsh' 1, 'dlig' 1, 'ss01' 1;
+}
+
+.font-thieving {
+  font-family: 'Fraunces', 'Cinzel Decorative', serif !important;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.font-briston {
+  font-family: 'Playfair Display', serif !important;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.font-adelaide {
+  font-family: 'Cormorant Garamond', 'Italiana', serif !important;
+  letter-spacing: -0.01em;
+}
+
+.font-royal {
+  font-family: 'Cinzel Decorative', serif !important;
+  letter-spacing: 0.05em;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.glass-panel {
+  background: rgba(17, 28, 22, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(131, 153, 88, 0.18);
+}
+
+.leaf-mask {
+  clip-path: ellipse(90% 100% at 50% 0%);
+}
+
+.organic-card {
+  background: linear-gradient(145deg, #132219, #0D1611);
+  border: 1px solid rgba(131, 153, 88, 0.2);
+}
+
+@keyframes pulse-sage {
+  0%, 100% { opacity: 1; }
+}
+
+.active-glow {
+  box-shadow: 0 0 12px rgba(131, 153, 88, 0.25);
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B130E;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1B2E23;
+  border-radius: 10px;
+}
+
+.editorial-wide {
+  letter-spacing: -0.03em;
+}
+
+@keyframes waveFloatSlow {
+  0% { transform: translateX(0) scaleY(1); }
+  50% { transform: translateX(-25%) scaleY(1.15); }
+  100% { transform: translateX(0) scaleY(1); }
+}
+
+@keyframes waveFloatFast {
+  0% { transform: translateX(0) scaleY(1); }
+  50% { transform: translateX(25%) scaleY(0.85); }
+  100% { transform: translateX(0) scaleY(1); }
+}
+
+.animate-wave-slow {
+  animation: waveFloatSlow 12s ease-in-out infinite;
+}
+
+.animate-wave-fast {
+  animation: waveFloatFast 8s ease-in-out infinite;
+}
+
+
