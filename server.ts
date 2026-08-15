@@ -310,9 +310,9 @@ async function startServer() {
   });
 
   // PATCH & POST /api/auth/profile
-  app.patch('/api/auth/profile', authenticate, (req, res) => {
+  app.patch('/api/auth/profile', authenticate, async (req, res) => {
     try {
-      const updatedUser = db.updateUserProfile(req.user!.id, req.body || {});
+      const updatedUser = await db.updateUserProfile(req.user!.id, req.body || {});
       if (!updatedUser) {
         res.status(404).json({ error: 'User not found.' });
         return;
@@ -326,9 +326,9 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/profile', authenticate, (req, res) => {
+  app.post('/api/auth/profile', authenticate, async (req, res) => {
     try {
-      const updatedUser = db.updateUserProfile(req.user!.id, req.body || {});
+      const updatedUser = await db.updateUserProfile(req.user!.id, req.body || {});
       if (!updatedUser) {
         res.status(404).json({ error: 'User not found.' });
         return;
@@ -353,9 +353,9 @@ async function startServer() {
   });
 
   // POST /api/keys
-  app.post('/api/keys', authenticate, (req, res) => {
+  app.post('/api/keys', authenticate, async (req, res) => {
     const { name, permissions } = req.body || {};
-    const result = db.createApiKey(
+    const result = await db.createApiKey(
       req.user!.id,
       name || 'HydroWatch API Key',
       permissions || ['read', 'write']
@@ -364,8 +364,8 @@ async function startServer() {
   });
 
   // DELETE /api/keys/:id
-  app.delete('/api/keys/:id', authenticate, (req, res) => {
-    const success = db.deleteApiKey(req.params.id as string, req.user!.id);
+  app.delete('/api/keys/:id', authenticate, async (req, res) => {
+    const success = await db.deleteApiKey(req.params.id as string, req.user!.id);
     if (!success) {
       res.status(404).json({ error: 'API key not found or unauthorized.' });
       return;
@@ -401,9 +401,9 @@ async function startServer() {
   });
 
   // POST /api/stations (Create Custom IoT Sensor Station)
-  app.post('/api/stations', authenticate, (req, res) => {
+  app.post('/api/stations', authenticate, async (req, res) => {
     try {
-      const station = db.addCustomStation(req.body, req.user!.id);
+      const station = await db.addCustomStation(req.body, req.user!.id);
       res.status(201).json(station);
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to create station.' });
@@ -411,13 +411,13 @@ async function startServer() {
   });
 
   // POST /api/stations/:id/telemetry (Ingest Sensor Reading)
-  app.post('/api/stations/:id/telemetry', authenticate, (req, res) => {
+  app.post('/api/stations/:id/telemetry', authenticate, async (req, res) => {
     const { readings } = req.body || {};
     if (!Array.isArray(readings) || readings.length === 0) {
       res.status(400).json({ error: 'Array of readings is required.' });
       return;
     }
-    const updated = db.recordTelemetry(req.params.id as string, readings);
+    const updated = await db.recordTelemetry(req.params.id as string, readings);
     if (!updated) {
       res.status(404).json({ error: `Station with ID ${req.params.id} not found.` });
       return;
@@ -486,14 +486,14 @@ async function startServer() {
   });
 
   // POST /api/alerts
-  app.post('/api/alerts', authenticate, (req, res) => {
+  app.post('/api/alerts', authenticate, async (req, res) => {
     const { station_id, station_name, parameter, operator, threshold, unit, title, severity } = req.body || {};
     if (!station_id || !parameter || threshold === undefined) {
       res.status(400).json({ error: 'station_id, parameter, and threshold are required.' });
       return;
     }
 
-    const rule = db.createAlertRule({
+    const rule = await db.createAlertRule({
       user_id: req.user!.id,
       station_id,
       station_name: station_name || 'Monitoring Node',
@@ -509,8 +509,8 @@ async function startServer() {
   });
 
   // DELETE /api/alerts/:id
-  app.delete('/api/alerts/:id', authenticate, (req, res) => {
-    const success = db.deleteAlertRule(req.params.id as string, req.user!.id);
+  app.delete('/api/alerts/:id', authenticate, async (req, res) => {
+    const success = await db.deleteAlertRule(req.params.id as string, req.user!.id);
     if (!success) {
       res.status(404).json({ error: 'Alert not found or unauthorized.' });
       return;
@@ -535,8 +535,8 @@ async function startServer() {
   });
 
   // POST /api/bookmarks/:stationId/toggle
-  app.post('/api/bookmarks/:stationId/toggle', authenticate, (req, res) => {
-    const result = db.toggleBookmark(req.user!.id, req.params.stationId as string);
+  app.post('/api/bookmarks/:stationId/toggle', authenticate, async (req, res) => {
+    const result = await db.toggleBookmark(req.user!.id, req.params.stationId as string);
     res.json(result);
   });
 

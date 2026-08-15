@@ -541,7 +541,7 @@ class RelationalDatabase {
     return safeUser;
   }
 
-  public updateUserProfile(
+  public async updateUserProfile(
     userId: string,
     updates: {
       full_name?: string;
@@ -549,7 +549,7 @@ class RelationalDatabase {
       role?: User['role'];
       preferences?: Partial<User['preferences']>;
     }
-  ): User | null {
+  ): Promise<User | null> {
     const index = this.data.users.findIndex(u => u.id === userId);
     if (index === -1) return null;
 
@@ -565,7 +565,7 @@ class RelationalDatabase {
     }
 
     if (this.pool) {
-      this.executeSql(
+      await this.executeSql(
         `UPDATE users SET full_name = $1, organization = $2, role = $3, preferences = $4 WHERE id = $5`,
         [user.full_name, user.organization, user.role, JSON.stringify(user.preferences), user.id]
       );
@@ -576,7 +576,7 @@ class RelationalDatabase {
   }
 
   // --- API KEY OPERATIONS ---
-  public createApiKey(userId: string, name: string, permissions: ApiKey['permissions'] = ['read']): { key: ApiKey; secret: string } {
+  public async createApiKey(userId: string, name: string, permissions: ApiKey['permissions'] = ['read']): Promise<{ key: ApiKey; secret: string }> {
     const rawSecret = `trg_live_${crypto.randomBytes(18).toString('hex')}`;
     const keyHash = crypto.createHash('sha256').update(rawSecret).digest('hex');
     const prefix = rawSecret.slice(0, 13);
@@ -598,7 +598,7 @@ class RelationalDatabase {
     this.data.api_keys.push(newKey);
 
     if (this.pool) {
-      this.executeSql(
+      await this.executeSql(
         `INSERT INTO api_keys (id, user_id, name, key_prefix, key_hash, permissions, rate_limit_rpm, usage_count, last_used_at, created_at, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
@@ -627,18 +627,18 @@ class RelationalDatabase {
       .map(({ key_hash: _, ...safeKey }) => safeKey);
   }
 
-  public revokeApiKey(keyId: string, userId?: string): boolean {
+  public async revokeApiKey(keyId: string, userId?: string): Promise<boolean> {
     const index = this.data.api_keys.findIndex(k => k.id === keyId && (!userId || k.user_id === userId || userId === 'usr_local'));
     if (index === -1) return false;
     this.data.api_keys[index].is_active = false;
 
     if (this.pool) {
-      this.executeSql(`UPDATE api_keys SET is_active = false WHERE id = $1`, [keyId]);
+      await this.executeSql(`UPDATE api_keys SET is_active = false WHERE id = $1`, [keyId]);
     }
     return true;
   }
 
-  public deleteApiKey(keyId: string, userId?: string): boolean {
+  public async deleteApiKey(keyId: string, userId?: string): Promise<boolean> {
     const prevLen = this.data.api_keys.length;
     this.data.api_keys = this.data.api_keys.filter(k => {
       if (k.id === keyId) {
@@ -650,14 +650,14 @@ class RelationalDatabase {
     });
     if (this.data.api_keys.length !== prevLen) {
       if (this.pool) {
-        this.executeSql(`DELETE FROM api_keys WHERE id = $1`, [keyId]);
+        await this.executeSql(`DELETE FROM api_keys WHERE id = $1`, [keyId]);
       }
       return true;
     }
     return false;
   }
 
-  public validateApiKey(rawKey: string): { valid: boolean; user?: User; permissions?: ApiKey['permissions']; error?: string } {
+  public async validateApiKey(rawKey: string): Promise<{ valid: boolean; user?: User; permissions?: ApiKey['permissions']; error?: string }> {
     if (!rawKey || !rawKey.startsWith('trg_live_')) {
       return { valid: false, error: 'Invalid API Key format. Must start with trg_live_' };
     }
@@ -688,7 +688,7 @@ class RelationalDatabase {
     foundKey.last_used_at = new Date().toISOString();
 
     if (this.pool) {
-      this.executeSql(`UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = $1 WHERE id = $2`, [
+      await this.executeSql(`UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = $1 WHERE id = $2`, [
         foundKey.last_used_at,
         foundKey.id,
       ]);
@@ -731,7 +731,7 @@ class RelationalDatabase {
     return st || null;
   }
 
-  public addCustomStation(station: Partial<Station>, userId?: string): Station {
+  public async addCustomStation(station: Partial<Station>, userId?: string): Promise<Station> {
     const stationId = station.station_id || `custom-${Date.now().toString(36)}`;
     const newStation: Station = {
       station_id: stationId,
@@ -761,7 +761,7 @@ class RelationalDatabase {
     this.data.stations.push(newStation);
 
     if (this.pool) {
-      this.executeSql(
+      await this.executeSql(
         `INSERT INTO stations (
           station_id, source, name, country, latitude, longitude, water_body_type, basin_name,
           latest_readings, status, last_updated, ph_level, pollution_percentage, wqi,
@@ -797,7 +797,7 @@ class RelationalDatabase {
     return newStation;
   }
 
-  public recordTelemetry(stationId: string, readings: Reading[]): Station | null {
+  public async recordTelemetry(stationId: string, readings: Reading[]): Promise<Station | null> {
     const station = this.data.stations.find(s => s.station_id === stationId);
     if (!station) return null;
 
@@ -807,7 +807,7 @@ class RelationalDatabase {
     const phReading = readings.find(r => r.parameter === 'ph')?.value;
     if (phReading !== undefined) station.ph_level = phReading;
 
-    readings.forEach(r => {
+    for (const r of readings) {
       const telId = `tel_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const telTime = r.timestamp || new Date().toISOString();
       this.data.telemetry.push({
@@ -820,22 +820,22 @@ class RelationalDatabase {
       });
 
       if (this.pool) {
-        this.executeSql(
+        await this.executeSql(
           `INSERT INTO telemetry (id, station_id, parameter, value, unit, timestamp)
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [telId, stationId, r.parameter, r.value, r.unit, telTime]
         );
       }
-    });
+    }
 
     if (this.pool) {
-      this.executeSql(
+      await this.executeSql(
         `UPDATE stations SET latest_readings = $1, last_updated = $2, ph_level = $3 WHERE station_id = $4`,
         [JSON.stringify(station.latest_readings), station.last_updated, station.ph_level || null, stationId]
       );
     }
 
-    this.checkAlertTriggers(station, readings);
+    await this.checkAlertTriggers(station, readings);
     return station;
   }
 
@@ -844,7 +844,7 @@ class RelationalDatabase {
     return this.data.alerts.filter(a => a.user_id === userId);
   }
 
-  public createAlertRule(rule: Omit<AlertRule, 'id' | 'created_at' | 'last_triggered_at'>): AlertRule {
+  public async createAlertRule(rule: Omit<AlertRule, 'id' | 'created_at' | 'last_triggered_at'>): Promise<AlertRule> {
     const newRule: AlertRule = {
       ...rule,
       id: `alt_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`,
@@ -854,7 +854,7 @@ class RelationalDatabase {
     this.data.alerts.push(newRule);
 
     if (this.pool) {
-      this.executeSql(
+      await this.executeSql(
         `INSERT INTO alerts (id, user_id, station_id, station_name, parameter, operator, threshold, unit, title, severity, is_active, last_triggered_at, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
@@ -878,12 +878,12 @@ class RelationalDatabase {
     return newRule;
   }
 
-  public deleteAlertRule(ruleId: string, userId: string): boolean {
+  public async deleteAlertRule(ruleId: string, userId: string): Promise<boolean> {
     const prevLen = this.data.alerts.length;
     this.data.alerts = this.data.alerts.filter(a => !(a.id === ruleId && a.user_id === userId));
     if (this.data.alerts.length !== prevLen) {
       if (this.pool) {
-        this.executeSql(`DELETE FROM alerts WHERE id = $1 AND user_id = $2`, [ruleId, userId]);
+        await this.executeSql(`DELETE FROM alerts WHERE id = $1 AND user_id = $2`, [ruleId, userId]);
       }
       return true;
     }
@@ -898,7 +898,7 @@ class RelationalDatabase {
     return this.data.alert_events.slice(-50);
   }
 
-  private checkAlertTriggers(station: Station, readings: Reading[]) {
+  private async checkAlertTriggers(station: Station, readings: Reading[]) {
     const rules = this.data.alerts.filter(a => a.is_active && (a.station_id === station.station_id || a.station_id === 'all'));
 
     for (const rule of rules) {
@@ -927,8 +927,8 @@ class RelationalDatabase {
         this.data.alert_events.unshift(event);
 
         if (this.pool) {
-          this.executeSql(`UPDATE alerts SET last_triggered_at = $1 WHERE id = $2`, [rule.last_triggered_at, rule.id]);
-          this.executeSql(
+          await this.executeSql(`UPDATE alerts SET last_triggered_at = $1 WHERE id = $2`, [rule.last_triggered_at, rule.id]);
+          await this.executeSql(
             `INSERT INTO alert_events (id, rule_id, station_id, station_name, parameter, triggered_value, threshold, severity, message, timestamp)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
@@ -954,12 +954,12 @@ class RelationalDatabase {
     return this.data.bookmarks.filter(b => b.user_id === userId);
   }
 
-  public toggleBookmark(userId: string, stationId: string): { isBookmarked: boolean } {
+  public async toggleBookmark(userId: string, stationId: string): Promise<{ isBookmarked: boolean }> {
     const index = this.data.bookmarks.findIndex(b => b.user_id === userId && b.station_id === stationId);
     if (index >= 0) {
       this.data.bookmarks.splice(index, 1);
       if (this.pool) {
-        this.executeSql(`DELETE FROM bookmarks WHERE user_id = $1 AND station_id = $2`, [userId, stationId]);
+        await this.executeSql(`DELETE FROM bookmarks WHERE user_id = $1 AND station_id = $2`, [userId, stationId]);
       }
       return { isBookmarked: false };
     } else {
@@ -973,7 +973,7 @@ class RelationalDatabase {
       });
 
       if (this.pool) {
-        this.executeSql(
+        await this.executeSql(
           `INSERT INTO bookmarks (id, user_id, station_id, created_at) VALUES ($1, $2, $3, $4)`,
           [bmId, userId, stationId, bmCreatedAt]
         );

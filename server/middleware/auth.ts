@@ -71,7 +71,7 @@ export function verifySessionToken(token: string): User | null {
 /**
  * Authenticates request using either Session Token or API Key
  */
-export function authenticate(req: Request, res: Response, next: NextFunction) {
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization || '';
   const apiKeyHeader = req.headers['x-api-key'] as string;
 
@@ -89,7 +89,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
   // 1. Check if it's an API Key (starts with trg_live_)
   if (token.startsWith('trg_live_')) {
-    const keyValidation = db.validateApiKey(token);
+    const keyValidation = await db.validateApiKey(token);
     if (!keyValidation.valid) {
       res.status(401).json({ error: keyValidation.error || 'Invalid or revoked API Key' });
       return;
@@ -116,7 +116,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 /**
  * Optional authentication middleware: parses user if token is present, but doesn't block request if missing
  */
-export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization || '';
   const apiKeyHeader = req.headers['x-api-key'] as string;
 
@@ -129,7 +129,7 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
 
   if (token) {
     if (token.startsWith('trg_live_')) {
-      const keyValidation = db.validateApiKey(token);
+      const keyValidation = await db.validateApiKey(token);
       if (keyValidation.valid) {
         req.user = keyValidation.user;
         req.authMethod = 'api_key';
