@@ -320,7 +320,7 @@ async function startServer() {
 
   // DELETE /api/keys/:id
   app.delete('/api/keys/:id', authenticate, (req, res) => {
-    const success = db.deleteApiKey(req.params.id, req.user!.id);
+    const success = db.deleteApiKey(req.params.id as string, req.user!.id);
     if (!success) {
       res.status(404).json({ error: 'API key not found or unauthorized.' });
       return;
@@ -346,7 +346,7 @@ async function startServer() {
 
   // GET /api/stations/:id
   app.get('/api/stations/:id', optionalAuth, (req, res) => {
-    const station = db.getStationById(req.params.id);
+    const station = db.getStationById(req.params.id as string);
     if (!station) {
       res.status(404).json({ error: `Station with ID ${req.params.id} not found` });
       return;
@@ -372,7 +372,7 @@ async function startServer() {
       res.status(400).json({ error: 'Array of readings is required.' });
       return;
     }
-    const updated = db.recordTelemetry(req.params.id, readings);
+    const updated = db.recordTelemetry(req.params.id as string, readings);
     if (!updated) {
       res.status(404).json({ error: `Station with ID ${req.params.id} not found.` });
       return;
@@ -382,7 +382,7 @@ async function startServer() {
 
   // GET /api/stations/:id/forecast
   app.get('/api/stations/:id/forecast', (req, res) => {
-    const station = db.getStationById(req.params.id);
+    const station = db.getStationById(req.params.id as string);
     if (!station) {
       res.status(404).json({ error: 'Station not found' });
       return;
@@ -395,7 +395,7 @@ async function startServer() {
 
   // GET /api/stations/:id/report
   app.get('/api/stations/:id/report', (req, res) => {
-    const station = db.getStationById(req.params.id);
+    const station = db.getStationById(req.params.id as string);
     if (!station) {
       res.status(404).json({ error: 'Station not found' });
       return;
@@ -407,7 +407,7 @@ async function startServer() {
 
   // GET /api/stations/:id/export
   app.get('/api/stations/:id/export', (req, res) => {
-    const station = db.getStationById(req.params.id);
+    const station = db.getStationById(req.params.id as string);
     if (!station) {
       res.status(404).json({ error: 'Station not found' });
       return;
@@ -465,7 +465,7 @@ async function startServer() {
 
   // DELETE /api/alerts/:id
   app.delete('/api/alerts/:id', authenticate, (req, res) => {
-    const success = db.deleteAlertRule(req.params.id, req.user!.id);
+    const success = db.deleteAlertRule(req.params.id as string, req.user!.id);
     if (!success) {
       res.status(404).json({ error: 'Alert not found or unauthorized.' });
       return;
@@ -491,7 +491,7 @@ async function startServer() {
 
   // POST /api/bookmarks/:stationId/toggle
   app.post('/api/bookmarks/:stationId/toggle', authenticate, (req, res) => {
-    const result = db.toggleBookmark(req.user!.id, req.params.stationId);
+    const result = db.toggleBookmark(req.user!.id, req.params.stationId as string);
     res.json(result);
   });
 
@@ -815,7 +815,7 @@ Respond directly, accurately, and scientifically to the user prompt:
 
   // Direct alias routes for frontend backward compatibility
   app.get('/stations', (req, res) => res.redirect('/api/stations'));
-  app.get('/stations/:id', (req, res) => res.redirect(`/api/stations/${req.params.id}`));
+  app.get('/stations/:id', (req, res) => res.redirect(`/api/stations/${req.params.id as string}`));
   app.get('/suggestions', (req, res) => res.redirect(`/api/suggestions?q=${encodeURIComponent((req.query.q as string) || '')}`));
 
   // Vite development middleware vs production static bundle
@@ -826,7 +826,7 @@ Respond directly, accurately, and scientifically to the user prompt:
     });
     app.use(vite.middlewares);
 
-    app.get('*', async (req, res, next) => {
+    app.get('*all', async (req, res, next) => {
       const url = req.originalUrl;
       try {
         let template = fs.readFileSync(path.resolve(currentDir, 'index.html'), 'utf-8');
@@ -840,7 +840,7 @@ Respond directly, accurately, and scientifically to the user prompt:
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

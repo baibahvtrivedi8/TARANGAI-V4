@@ -376,3 +376,5 @@ export const GlobeView = forwardRef<GlobeViewRef, GlobeViewProps>(({
 });
 
 GlobeView.displayName = 'GlobeView';
+
+export default GlobeView;

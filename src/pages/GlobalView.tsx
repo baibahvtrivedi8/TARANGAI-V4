@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, Suspense, lazy } from 'react';
 import { Station, WaterQualityStatus, StationAggregateStats } from '../types';
 import { fetchStations, fetchGlobalVitality } from '../services/api';
-import { GlobeView, GlobeViewRef } from '../components/GlobeView';
+import type { GlobeViewRef } from '../components/GlobeView';
+
+const GlobeView = lazy(() => import('../components/GlobeView'));
 
 interface GlobalViewProps {
   onNavigate: (route: string) => void;
@@ -205,12 +207,21 @@ export const GlobalView: React.FC<GlobalViewProps> = ({ onNavigate }) => {
 
       {/* Main Canvas: 3D Globe Visualization */}
       <section className="flex-grow h-full relative bg-forest-deep overflow-hidden min-h-[400px]">
-        <GlobeView
-          ref={globeRef}
-          stations={filteredStations}
-          onSelectStation={id => onNavigate(`/station/${id}`)}
-          activeStationId={selectedStationId || undefined}
-        />
+        <Suspense
+          fallback={
+            <div className="w-full h-full flex flex-col items-center justify-center bg-[#070E09] text-outline-variant gap-3">
+              <div className="w-8 h-8 rounded-full border-2 border-[#839958]/30 border-t-[#839958] animate-spin" />
+              <span className="text-xs font-label-caps tracking-wider text-[#839958] uppercase">Loading Planetary Telemetry...</span>
+            </div>
+          }
+        >
+          <GlobeView
+            ref={globeRef}
+            stations={filteredStations}
+            onSelectStation={id => onNavigate(`/station/${id}`)}
+            activeStationId={selectedStationId || undefined}
+          />
+        </Suspense>
 
         {/* Dashboard Overlays */}
         <div className="absolute top-6 left-6 z-20 w-80 space-y-4 pointer-events-auto">

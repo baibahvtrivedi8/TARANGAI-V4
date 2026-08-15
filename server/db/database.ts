@@ -64,6 +64,23 @@ class RelationalDatabase {
   }
 
   private seedInitialData() {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    if (isProduction) {
+      this.data = {
+        users: [],
+        api_keys: [],
+        stations: [...INITIAL_STATIONS],
+        telemetry: [],
+        alerts: [],
+        alert_events: [],
+        bookmarks: [],
+        reports: [],
+        rate_limits: {},
+      };
+      return;
+    }
+
     const salt = bcrypt.genSaltSync(10);
     const demoPasswordHash = bcrypt.hashSync('tarang2026', salt);
 
