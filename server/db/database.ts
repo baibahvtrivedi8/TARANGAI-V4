@@ -1,11 +1,11 @@
-import fs from 'fs';
-import path from 'path';
+import 'dotenv/config';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import pg from 'pg';
 import { User, ApiKey, Station, Reading, AlertRule, AlertEvent, Bookmark, ComplianceReport } from '../../src/types.js';
 import { INITIAL_STATIONS, createDynamicRiverStation } from '../../src/data/mockStations.js';
 
-interface DatabaseSchema {
+export interface DatabaseSchema {
   users: (User & { password_hash: string })[];
   api_keys: (ApiKey & { key_hash: string })[];
   stations: Station[];
@@ -17,10 +17,12 @@ interface DatabaseSchema {
   rate_limits: Record<string, { count: number; reset_at: number }>;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_FILE = path.join(DATA_DIR, 'tarang_database.json');
+const { Pool } = pg;
 
 class RelationalDatabase {
+  private pool: pg.Pool | null = null;
+  private isInitialized = false;
+
   private data: DatabaseSchema = {
     users: [],
     api_keys: [],
@@ -37,29 +39,303 @@ class RelationalDatabase {
     this.init();
   }
 
-  private init() {
-    try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
+  private async init() {
+    const connectionString = process.env.DATABASE_URL;
 
-      if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        this.data = JSON.parse(raw);
-      } else {
-        this.seedInitialData();
-        this.save();
-      }
-
-      // Ensure all initial stations are present
+    if (!connectionString) {
+      console.warn('[Database] DATABASE_URL not configured — running with resilient in-memory local storage.');
+      this.seedInitialData();
       if (!this.data.stations || this.data.stations.length === 0) {
         this.data.stations = [...INITIAL_STATIONS];
-        this.save();
       }
-    } catch (err) {
-      console.warn('Database initialization warning, resetting to clean state:', err);
+      return;
+    }
+
+    try {
+      this.pool = new Pool({
+        connectionString,
+        ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1') ? false : { rejectUnauthorized: false },
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      });
+
+      this.pool.on('error', (err) => {
+        console.error('[Database] Unexpected error on idle PostgreSQL client:', err.message);
+      });
+
+      await this.ensureSchema();
+      await this.hydrateFromPostgres();
+      this.isInitialized = true;
+      console.log('[Database] Connected to PostgreSQL database successfully.');
+    } catch (err: any) {
+      console.warn(`[Database] PostgreSQL connection failed (${err?.message || 'Unknown error'}) — falling back to resilient in-memory storage.`);
+      if (this.pool) {
+        try {
+          await this.pool.end();
+        } catch {
+          // ignore pool termination error
+        }
+        this.pool = null;
+      }
       this.seedInitialData();
-      this.save();
+    }
+
+    if (!this.data.stations || this.data.stations.length === 0) {
+      this.data.stations = [...INITIAL_STATIONS];
+    }
+  }
+
+  private async ensureSchema() {
+    if (!this.pool) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR(64) PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          full_name VARCHAR(255) NOT NULL,
+          organization VARCHAR(255),
+          role VARCHAR(32) NOT NULL DEFAULT 'researcher',
+          password_hash TEXT NOT NULL,
+          preferences JSONB DEFAULT '{"default_basin":"Ganges River Basin","temperature_unit":"C","theme_contrast":"standard"}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          key_prefix VARCHAR(32) NOT NULL,
+          key_hash VARCHAR(128) NOT NULL UNIQUE,
+          permissions TEXT[] NOT NULL DEFAULT '{"read"}',
+          rate_limit_rpm INT NOT NULL DEFAULT 120,
+          usage_count INT NOT NULL DEFAULT 0,
+          last_used_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+          is_active BOOLEAN NOT NULL DEFAULT true
+        );
+
+        CREATE TABLE IF NOT EXISTS stations (
+          station_id VARCHAR(128) PRIMARY KEY,
+          source VARCHAR(64) NOT NULL DEFAULT 'tarang_iot',
+          name VARCHAR(255) NOT NULL,
+          country VARCHAR(128) NOT NULL,
+          latitude NUMERIC(10, 6) NOT NULL,
+          longitude NUMERIC(10, 6) NOT NULL,
+          water_body_type VARCHAR(128) NOT NULL,
+          basin_name VARCHAR(255),
+          latest_readings JSONB NOT NULL DEFAULT '[]'::jsonb,
+          status VARCHAR(32) NOT NULL DEFAULT 'good',
+          last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+          ph_level NUMERIC(5, 2),
+          pollution_percentage NUMERIC(5, 2),
+          wqi NUMERIC(6, 2),
+          pollutants JSONB DEFAULT '[]'::jsonb,
+          connected_sewers JSONB DEFAULT '[]'::jsonb,
+          created_by VARCHAR(64),
+          is_custom BOOLEAN DEFAULT false
+        );
+
+        CREATE TABLE IF NOT EXISTS telemetry (
+          id VARCHAR(64) PRIMARY KEY,
+          station_id VARCHAR(128) REFERENCES stations(station_id) ON DELETE CASCADE,
+          parameter VARCHAR(128) NOT NULL,
+          value NUMERIC(12, 4) NOT NULL,
+          unit VARCHAR(32) NOT NULL,
+          timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS alerts (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
+          station_id VARCHAR(128) NOT NULL,
+          station_name VARCHAR(255) NOT NULL,
+          parameter VARCHAR(128) NOT NULL,
+          operator VARCHAR(32) NOT NULL,
+          threshold NUMERIC(12, 4) NOT NULL,
+          unit VARCHAR(32) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          severity VARCHAR(32) NOT NULL DEFAULT 'warning',
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          last_triggered_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS alert_events (
+          id VARCHAR(64) PRIMARY KEY,
+          rule_id VARCHAR(64) REFERENCES alerts(id) ON DELETE CASCADE,
+          station_id VARCHAR(128) NOT NULL,
+          station_name VARCHAR(255) NOT NULL,
+          parameter VARCHAR(128) NOT NULL,
+          triggered_value NUMERIC(12, 4) NOT NULL,
+          threshold NUMERIC(12, 4) NOT NULL,
+          severity VARCHAR(32) NOT NULL,
+          message TEXT NOT NULL,
+          timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS bookmarks (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
+          station_id VARCHAR(128) NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS reports (
+          id VARCHAR(64) PRIMARY KEY,
+          station_id VARCHAR(128) NOT NULL,
+          station_name VARCHAR(255) NOT NULL,
+          generated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+          evaluated_by VARCHAR(255) NOT NULL,
+          wqi_score NUMERIC(6, 2) NOT NULL,
+          who_compliance BOOLEAN NOT NULL,
+          epa_compliance BOOLEAN NOT NULL,
+          cpcb_class VARCHAR(32) NOT NULL,
+          primary_exceedances JSONB DEFAULT '[]'::jsonb,
+          remediation_steps JSONB DEFAULT '[]'::jsonb,
+          summary TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS rate_limits (
+          key_id VARCHAR(128) PRIMARY KEY,
+          count INT NOT NULL DEFAULT 0,
+          reset_at BIGINT NOT NULL
+        );
+      `);
+
+      // Seed INITIAL_STATIONS with ON CONFLICT DO NOTHING
+      for (const st of INITIAL_STATIONS) {
+        await client.query(
+          `INSERT INTO stations (
+            station_id, source, name, country, latitude, longitude, water_body_type, basin_name,
+            latest_readings, status, last_updated, ph_level, pollution_percentage, wqi,
+            pollutants, connected_sewers, created_by, is_custom
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          ON CONFLICT (station_id) DO NOTHING`,
+          [
+            st.station_id,
+            st.source,
+            st.name,
+            st.country,
+            st.latitude,
+            st.longitude,
+            st.water_body_type,
+            st.basin_name || null,
+            JSON.stringify(st.latest_readings || []),
+            st.status,
+            st.last_updated,
+            st.ph_level || null,
+            st.pollution_percentage || null,
+            st.wqi || null,
+            JSON.stringify(st.pollutants || []),
+            JSON.stringify(st.connected_sewers || []),
+            st.created_by || null,
+            st.is_custom || false,
+          ]
+        );
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private async hydrateFromPostgres() {
+    if (!this.pool) return;
+    const client = await this.pool.connect();
+    try {
+      const [uRes, kRes, sRes, aRes, eRes, bRes] = await Promise.all([
+        client.query('SELECT * FROM users'),
+        client.query('SELECT * FROM api_keys'),
+        client.query('SELECT * FROM stations'),
+        client.query('SELECT * FROM alerts'),
+        client.query('SELECT * FROM alert_events ORDER BY timestamp DESC LIMIT 100'),
+        client.query('SELECT * FROM bookmarks'),
+      ]);
+
+      this.data.users = uRes.rows.map(r => ({
+        id: r.id,
+        email: r.email,
+        full_name: r.full_name,
+        organization: r.organization,
+        role: r.role,
+        created_at: r.created_at?.toISOString?.() || r.created_at,
+        password_hash: r.password_hash,
+        preferences: typeof r.preferences === 'string' ? JSON.parse(r.preferences) : r.preferences,
+      }));
+
+      this.data.api_keys = kRes.rows.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        name: r.name,
+        key_prefix: r.key_prefix,
+        key_hash: r.key_hash,
+        permissions: Array.isArray(r.permissions) ? r.permissions : (typeof r.permissions === 'string' ? JSON.parse(r.permissions) : ['read']),
+        rate_limit_rpm: r.rate_limit_rpm,
+        usage_count: r.usage_count,
+        last_used_at: r.last_used_at ? (r.last_used_at.toISOString?.() || r.last_used_at) : null,
+        created_at: r.created_at?.toISOString?.() || r.created_at,
+        is_active: r.is_active,
+      }));
+
+      this.data.stations = sRes.rows.map(r => ({
+        station_id: r.station_id,
+        source: r.source,
+        name: r.name,
+        country: r.country,
+        latitude: parseFloat(r.latitude),
+        longitude: parseFloat(r.longitude),
+        water_body_type: r.water_body_type,
+        basin_name: r.basin_name || undefined,
+        latest_readings: typeof r.latest_readings === 'string' ? JSON.parse(r.latest_readings) : r.latest_readings,
+        status: r.status,
+        last_updated: r.last_updated?.toISOString?.() || r.last_updated,
+        ph_level: r.ph_level ? parseFloat(r.ph_level) : undefined,
+        pollution_percentage: r.pollution_percentage ? parseFloat(r.pollution_percentage) : undefined,
+        wqi: r.wqi ? parseFloat(r.wqi) : undefined,
+        pollutants: typeof r.pollutants === 'string' ? JSON.parse(r.pollutants) : r.pollutants,
+        connected_sewers: typeof r.connected_sewers === 'string' ? JSON.parse(r.connected_sewers) : r.connected_sewers,
+        created_by: r.created_by || undefined,
+        is_custom: r.is_custom || false,
+      }));
+
+      this.data.alerts = aRes.rows.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        station_id: r.station_id,
+        station_name: r.station_name,
+        parameter: r.parameter,
+        operator: r.operator,
+        threshold: parseFloat(r.threshold),
+        unit: r.unit,
+        title: r.title,
+        severity: r.severity,
+        is_active: r.is_active,
+        last_triggered_at: r.last_triggered_at ? (r.last_triggered_at.toISOString?.() || r.last_triggered_at) : null,
+        created_at: r.created_at?.toISOString?.() || r.created_at,
+      }));
+
+      this.data.alert_events = eRes.rows.map(r => ({
+        id: r.id,
+        rule_id: r.rule_id,
+        station_id: r.station_id,
+        station_name: r.station_name,
+        parameter: r.parameter,
+        triggered_value: parseFloat(r.triggered_value),
+        threshold: parseFloat(r.threshold),
+        severity: r.severity,
+        message: r.message,
+        timestamp: r.timestamp?.toISOString?.() || r.timestamp,
+      }));
+
+      this.data.bookmarks = bRes.rows.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        station_id: r.station_id,
+        created_at: r.created_at?.toISOString?.() || r.created_at,
+      }));
+    } finally {
+      client.release();
     }
   }
 
@@ -100,9 +376,9 @@ class RelationalDatabase {
     };
 
     const demoUser2: User & { password_hash: string } = {
-      id: 'usr_creator_baibhav',
-      email: 'baibahvtrivedi8@gmail.com',
-      full_name: 'Baibhav Trivedi',
+      id: 'usr_admin_01',
+      email: 'admin@tarang-ai.org',
+      full_name: 'Lead System Administrator',
       organization: 'Tarang Environmental AI Lab',
       role: 'admin',
       created_at: new Date().toISOString(),
@@ -132,12 +408,12 @@ class RelationalDatabase {
       is_active: true,
     };
 
-    const baibhavApiKey: ApiKey & { key_hash: string } = {
-      id: 'key_baibhav_01',
+    const adminApiKey: ApiKey & { key_hash: string } = {
+      id: 'key_admin_01',
       user_id: demoUser2.id,
-      name: 'Baibhav Trivedi Lab Primary Telemetry Key',
-      key_prefix: 'trg_live_baib_',
-      key_hash: crypto.createHash('sha256').update('trg_live_baib_master_9923817a').digest('hex'),
+      name: 'Admin Primary Telemetry Key',
+      key_prefix: 'trg_live_adm_',
+      key_hash: crypto.createHash('sha256').update('trg_live_adm_master_9923817a').digest('hex'),
       permissions: ['read', 'write', 'alerts', 'admin'],
       rate_limit_rpm: 300,
       usage_count: 128,
@@ -172,7 +448,7 @@ class RelationalDatabase {
 
     this.data = {
       users: [demoUser1, demoUser2],
-      api_keys: [demoApiKey, baibhavApiKey],
+      api_keys: [demoApiKey, adminApiKey],
       stations: [...INITIAL_STATIONS],
       telemetry: [],
       alerts: [demoAlert],
@@ -183,11 +459,12 @@ class RelationalDatabase {
     };
   }
 
-  private save() {
+  private async executeSql(sql: string, params: any[] = []) {
+    if (!this.pool) return;
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+      await this.pool.query(sql, params);
     } catch (err) {
-      console.error('Failed to write database file:', err);
+      console.error('Database SQL operation error:', err);
     }
   }
 
@@ -217,7 +494,23 @@ class RelationalDatabase {
     };
 
     this.data.users.push(newUser);
-    this.save();
+
+    if (this.pool) {
+      await this.executeSql(
+        `INSERT INTO users (id, email, full_name, organization, role, password_hash, preferences, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          newUser.id,
+          newUser.email,
+          newUser.full_name,
+          newUser.organization,
+          newUser.role,
+          newUser.password_hash,
+          JSON.stringify(newUser.preferences),
+          newUser.created_at,
+        ]
+      );
+    }
 
     const { password_hash: _, ...safeUser } = newUser;
     return safeUser;
@@ -271,7 +564,13 @@ class RelationalDatabase {
       };
     }
 
-    this.save();
+    if (this.pool) {
+      this.executeSql(
+        `UPDATE users SET full_name = $1, organization = $2, role = $3, preferences = $4 WHERE id = $5`,
+        [user.full_name, user.organization, user.role, JSON.stringify(user.preferences), user.id]
+      );
+    }
+
     const { password_hash: _, ...safeUser } = user;
     return safeUser;
   }
@@ -297,7 +596,26 @@ class RelationalDatabase {
     };
 
     this.data.api_keys.push(newKey);
-    this.save();
+
+    if (this.pool) {
+      this.executeSql(
+        `INSERT INTO api_keys (id, user_id, name, key_prefix, key_hash, permissions, rate_limit_rpm, usage_count, last_used_at, created_at, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          newKey.id,
+          newKey.user_id,
+          newKey.name,
+          newKey.key_prefix,
+          newKey.key_hash,
+          newKey.permissions,
+          newKey.rate_limit_rpm,
+          newKey.usage_count,
+          newKey.last_used_at,
+          newKey.created_at,
+          newKey.is_active,
+        ]
+      );
+    }
 
     const { key_hash: _, ...safeKey } = newKey;
     return { key: { ...safeKey, key_secret: rawSecret }, secret: rawSecret };
@@ -313,7 +631,10 @@ class RelationalDatabase {
     const index = this.data.api_keys.findIndex(k => k.id === keyId && (!userId || k.user_id === userId || userId === 'usr_local'));
     if (index === -1) return false;
     this.data.api_keys[index].is_active = false;
-    this.save();
+
+    if (this.pool) {
+      this.executeSql(`UPDATE api_keys SET is_active = false WHERE id = $1`, [keyId]);
+    }
     return true;
   }
 
@@ -321,14 +642,16 @@ class RelationalDatabase {
     const prevLen = this.data.api_keys.length;
     this.data.api_keys = this.data.api_keys.filter(k => {
       if (k.id === keyId) {
-        if (!userId || k.user_id === userId || userId === 'usr_local' || userId === 'usr_creator_baibhav' || userId === 'usr_demo_researcher_01') {
+        if (!userId || k.user_id === userId || userId === 'usr_local' || userId === 'usr_admin_01' || userId === 'usr_demo_researcher_01') {
           return false;
         }
       }
       return true;
     });
     if (this.data.api_keys.length !== prevLen) {
-      this.save();
+      if (this.pool) {
+        this.executeSql(`DELETE FROM api_keys WHERE id = $1`, [keyId]);
+      }
       return true;
     }
     return false;
@@ -363,7 +686,13 @@ class RelationalDatabase {
     // Increment usage
     foundKey.usage_count++;
     foundKey.last_used_at = new Date().toISOString();
-    this.save();
+
+    if (this.pool) {
+      this.executeSql(`UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = $1 WHERE id = $2`, [
+        foundKey.last_used_at,
+        foundKey.id,
+      ]);
+    }
 
     const user = this.getUserById(foundKey.user_id);
     return { valid: true, user: user || undefined, permissions: foundKey.permissions };
@@ -430,7 +759,41 @@ class RelationalDatabase {
     };
 
     this.data.stations.push(newStation);
-    this.save();
+
+    if (this.pool) {
+      this.executeSql(
+        `INSERT INTO stations (
+          station_id, source, name, country, latitude, longitude, water_body_type, basin_name,
+          latest_readings, status, last_updated, ph_level, pollution_percentage, wqi,
+          pollutants, connected_sewers, created_by, is_custom
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        ON CONFLICT (station_id) DO UPDATE SET
+          latest_readings = EXCLUDED.latest_readings,
+          status = EXCLUDED.status,
+          last_updated = EXCLUDED.last_updated`,
+        [
+          newStation.station_id,
+          newStation.source,
+          newStation.name,
+          newStation.country,
+          newStation.latitude,
+          newStation.longitude,
+          newStation.water_body_type,
+          newStation.basin_name || null,
+          JSON.stringify(newStation.latest_readings || []),
+          newStation.status,
+          newStation.last_updated,
+          newStation.ph_level || null,
+          newStation.pollution_percentage || null,
+          newStation.wqi || null,
+          JSON.stringify(newStation.pollutants || []),
+          JSON.stringify(newStation.connected_sewers || []),
+          newStation.created_by || null,
+          newStation.is_custom || false,
+        ]
+      );
+    }
+
     return newStation;
   }
 
@@ -445,18 +808,34 @@ class RelationalDatabase {
     if (phReading !== undefined) station.ph_level = phReading;
 
     readings.forEach(r => {
+      const telId = `tel_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const telTime = r.timestamp || new Date().toISOString();
       this.data.telemetry.push({
-        id: `tel_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: telId,
         station_id: stationId,
         parameter: r.parameter,
         value: r.value,
         unit: r.unit,
-        timestamp: r.timestamp || new Date().toISOString(),
+        timestamp: telTime,
       });
+
+      if (this.pool) {
+        this.executeSql(
+          `INSERT INTO telemetry (id, station_id, parameter, value, unit, timestamp)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [telId, stationId, r.parameter, r.value, r.unit, telTime]
+        );
+      }
     });
 
+    if (this.pool) {
+      this.executeSql(
+        `UPDATE stations SET latest_readings = $1, last_updated = $2, ph_level = $3 WHERE station_id = $4`,
+        [JSON.stringify(station.latest_readings), station.last_updated, station.ph_level || null, stationId]
+      );
+    }
+
     this.checkAlertTriggers(station, readings);
-    this.save();
     return station;
   }
 
@@ -473,7 +852,29 @@ class RelationalDatabase {
       last_triggered_at: null,
     };
     this.data.alerts.push(newRule);
-    this.save();
+
+    if (this.pool) {
+      this.executeSql(
+        `INSERT INTO alerts (id, user_id, station_id, station_name, parameter, operator, threshold, unit, title, severity, is_active, last_triggered_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          newRule.id,
+          newRule.user_id,
+          newRule.station_id,
+          newRule.station_name,
+          newRule.parameter,
+          newRule.operator,
+          newRule.threshold,
+          newRule.unit,
+          newRule.title,
+          newRule.severity,
+          newRule.is_active,
+          newRule.last_triggered_at,
+          newRule.created_at,
+        ]
+      );
+    }
+
     return newRule;
   }
 
@@ -481,7 +882,9 @@ class RelationalDatabase {
     const prevLen = this.data.alerts.length;
     this.data.alerts = this.data.alerts.filter(a => !(a.id === ruleId && a.user_id === userId));
     if (this.data.alerts.length !== prevLen) {
-      this.save();
+      if (this.pool) {
+        this.executeSql(`DELETE FROM alerts WHERE id = $1 AND user_id = $2`, [ruleId, userId]);
+      }
       return true;
     }
     return false;
@@ -522,6 +925,26 @@ class RelationalDatabase {
           timestamp: new Date().toISOString(),
         };
         this.data.alert_events.unshift(event);
+
+        if (this.pool) {
+          this.executeSql(`UPDATE alerts SET last_triggered_at = $1 WHERE id = $2`, [rule.last_triggered_at, rule.id]);
+          this.executeSql(
+            `INSERT INTO alert_events (id, rule_id, station_id, station_name, parameter, triggered_value, threshold, severity, message, timestamp)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              event.id,
+              event.rule_id,
+              event.station_id,
+              event.station_name,
+              event.parameter,
+              event.triggered_value,
+              event.threshold,
+              event.severity,
+              event.message,
+              event.timestamp,
+            ]
+          );
+        }
       }
     }
   }
@@ -535,16 +958,27 @@ class RelationalDatabase {
     const index = this.data.bookmarks.findIndex(b => b.user_id === userId && b.station_id === stationId);
     if (index >= 0) {
       this.data.bookmarks.splice(index, 1);
-      this.save();
+      if (this.pool) {
+        this.executeSql(`DELETE FROM bookmarks WHERE user_id = $1 AND station_id = $2`, [userId, stationId]);
+      }
       return { isBookmarked: false };
     } else {
+      const bmId = `bm_${Date.now()}`;
+      const bmCreatedAt = new Date().toISOString();
       this.data.bookmarks.push({
-        id: `bm_${Date.now()}`,
+        id: bmId,
         user_id: userId,
         station_id: stationId,
-        created_at: new Date().toISOString(),
+        created_at: bmCreatedAt,
       });
-      this.save();
+
+      if (this.pool) {
+        this.executeSql(
+          `INSERT INTO bookmarks (id, user_id, station_id, created_at) VALUES ($1, $2, $3, $4)`,
+          [bmId, userId, stationId, bmCreatedAt]
+        );
+      }
+
       return { isBookmarked: true };
     }
   }

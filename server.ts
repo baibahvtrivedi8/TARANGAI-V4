@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -183,8 +185,45 @@ You can ask me questions about global rivers and water quality telemetry:
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Trust proxy for reverse proxies (Vercel, Cloud Run, Nginx)
+  app.set('trust proxy', 1);
+
+  // ==========================================
+  // CORS CONFIGURATION
+  // ==========================================
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || (isProduction ? undefined : '*');
+  app.use(
+    cors({
+      origin: allowedOrigin || true,
+      credentials: true,
+    })
+  );
 
   app.use(express.json());
+
+  // ==========================================
+  // RATE LIMITING
+  // ==========================================
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 100,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false, forwardedHeader: false },
+    message: { error: 'Too many requests from this IP, please try again after 15 minutes.' },
+  });
+  app.use('/api/', apiLimiter);
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false, forwardedHeader: false },
+    message: { error: 'Too many authentication attempts, please try again after 15 minutes.' },
+  });
 
   // Initialize Gemini AI lazily if key is configured
   const getAi = () => {
@@ -198,27 +237,28 @@ async function startServer() {
   // ==========================================
 
   // POST /api/auth/register
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authLimiter, async (req, res) => {
     try {
       const { email, password, full_name, organization, role } = req.body || {};
-      if (!email || !email.includes('@')) {
-        res.status(400).json({ error: 'Valid email address is required.' });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+        res.status(400).json({ error: 'A valid email address is required (e.g. name@domain.com).' });
         return;
       }
-      if (!password || password.length < 6) {
-        res.status(400).json({ error: 'Password must be at least 6 characters.' });
+      if (!password || typeof password !== 'string' || password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters long.' });
         return;
       }
-      if (!full_name || full_name.trim().length < 2) {
-        res.status(400).json({ error: 'Full name is required.' });
+      if (!full_name || typeof full_name !== 'string' || full_name.trim().length < 2) {
+        res.status(400).json({ error: 'Full name is required (minimum 2 characters).' });
         return;
       }
 
       const user = await db.createUser({
-        email,
+        email: email.trim(),
         password,
-        full_name,
-        organization,
+        full_name: full_name.trim(),
+        organization: organization?.trim(),
         role: role || 'researcher',
       });
 
@@ -234,11 +274,16 @@ async function startServer() {
   });
 
   // POST /api/auth/login
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body || {};
-      if (!email || !password) {
-        res.status(400).json({ error: 'Email and password are required.' });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+        res.status(400).json({ error: 'Valid email address is required.' });
+        return;
+      }
+      if (!password || typeof password !== 'string' || password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters long.' });
         return;
       }
 
